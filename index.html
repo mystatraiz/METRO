@@ -232,6 +232,11 @@
       gap: 6px;
     }
 
+    .swipe-stock {
+      font-size: 0.8rem;
+      color: #cbd5f5;
+    }
+
     .swipe-name {
       font-size: 1.4rem;
       font-weight: 700;
@@ -404,8 +409,12 @@
       <!-- Création de liste par swipe -->
       <div class="card">
         <h2 style="font-size:1.1rem;margin:0 0 8px;">Créer une liste (mode swipe)</h2>
-        <p>Les produits seront proposés <strong>dans l’ordre des rayons</strong> : fruits et legumes → surgeles → sec → alcool → softs → hygiene → materiel.<br/>
-        Swipe <strong>gauche = ajouter</strong>, swipe <strong>droite = passer</strong>.</p>
+        <p>
+          Les produits seront proposés <strong>dans l’ordre des zones de stockage</strong> :
+          chambre froide → piece a viande → produits d'entretien → caveau → garage.<br/>
+          À l’intérieur de chaque zone : tri par rayon Metro, puis par nom.<br/>
+          Swipe <strong>gauche = ajouter</strong>, swipe <strong>droite = passer</strong>.
+        </p>
 
         <div class="header-actions">
           <button id="startSession" class="btn-primary btn-full">
@@ -446,7 +455,7 @@
           </div>
           <div class="row" style="margin-top:6px;">
             <div class="col-2">
-              <label for="prodRayon">Rayon</label>
+              <label for="prodRayon">Rayon magasin</label>
               <select id="prodRayon">
                 <option value="fruits et legumes">fruits et legumes</option>
                 <option value="frais">frais</option>
@@ -461,6 +470,18 @@
             <div class="col-2">
               <label for="prodQty">Qté par défaut</label>
               <input id="prodQty" type="number" min="1" value="1" />
+            </div>
+          </div>
+          <div class="row" style="margin-top:6px;">
+            <div class="col">
+              <label for="prodStock">Stockage au restaurant</label>
+              <select id="prodStock">
+                <option value="chambre froide">chambre froide</option>
+                <option value="piece a viande">piece a viande</option>
+                <option value="produits d'entretien">produits d'entretien</option>
+                <option value="caveau">caveau</option>
+                <option value="garage">garage</option>
+              </select>
             </div>
           </div>
           <div style="margin-top:10px;">
@@ -496,6 +517,7 @@
       <div id="swipeCard" class="swipe-card">
         <div class="swipe-top">
           <div id="swipeRayon" class="swipe-rayon"></div>
+          <div id="swipeStock" class="swipe-stock"></div>
           <div id="swipeName" class="swipe-name"></div>
 
           <div class="qty-control">
@@ -552,6 +574,8 @@ function saveProducts(arr) {
 }
 
 let products = loadProducts();
+// pour les anciens enregistrements sans stockage, on met par défaut "garage"
+products = products.map(p => ({ ...p, stockage: p.stockage || "garage" }));
 
 const rayonOrder = [
   "fruits et legumes",
@@ -562,6 +586,14 @@ const rayonOrder = [
   "softs",
   "hygiene",
   "materiel"
+];
+
+const stockageOrder = [
+  "chambre froide",
+  "piece a viande",
+  "produits d'entretien",
+  "caveau",
+  "garage"
 ];
 
 const rayonIcons = {
@@ -582,6 +614,15 @@ function sortByRayonThenName(a, b) {
   const rb = B === -1 ? 999 : B;
   if (ra !== rb) return ra - rb;
   return a.name.localeCompare(b.name, "fr", { sensitivity: "base" });
+}
+
+function sortByStockageThenRayonThenName(a, b) {
+  const ZA = stockageOrder.indexOf(a.stockage);
+  const ZB = stockageOrder.indexOf(b.stockage);
+  const za = ZA === -1 ? 999 : ZA;
+  const zb = ZB === -1 ? 999 : ZB;
+  if (za !== zb) return za - zb;
+  return sortByRayonThenName(a, b);
 }
 
 /* AFFICHAGE PRODUITS */
@@ -619,7 +660,7 @@ function renderProducts() {
 
     const meta = document.createElement("div");
     meta.className = "product-meta";
-    meta.textContent = "Qté par défaut : " + p.defaultQty;
+    meta.textContent = `Qté: ${p.defaultQty} · Rayon: ${p.rayon} · Stockage: ${p.stockage}`;
 
     main.appendChild(n);
     main.appendChild(meta);
@@ -633,6 +674,7 @@ function renderProducts() {
     fill.onclick = () => {
       prodName.value = p.name;
       prodRayon.value = p.rayon;
+      prodStock.value = p.stockage || "garage";
       prodQty.value = p.defaultQty;
     };
 
@@ -661,6 +703,7 @@ renderProducts();
 const prodName = document.getElementById("prodName");
 const prodRayon = document.getElementById("prodRayon");
 const prodQty = document.getElementById("prodQty");
+const prodStock = document.getElementById("prodStock");
 const productForm = document.getElementById("productForm");
 
 productForm.onsubmit = (e) => {
@@ -670,10 +713,14 @@ productForm.onsubmit = (e) => {
   if (!name) return;
 
   const rayon = prodRayon.value;
+  const stockage = prodStock.value;
   const qty = parseInt(prodQty.value) || 1;
 
   let existing = products.find(
-    p => p.name.toLowerCase() === name.toLowerCase() && p.rayon === rayon
+    p =>
+      p.name.toLowerCase() === name.toLowerCase() &&
+      p.rayon === rayon &&
+      p.stockage === stockage
   );
 
   if (existing) {
@@ -683,6 +730,7 @@ productForm.onsubmit = (e) => {
       id: Date.now(),
       name,
       rayon,
+      stockage,
       defaultQty: qty
     });
   }
@@ -709,6 +757,7 @@ let currentQty = 1;
 
 const swipeOverlay = document.getElementById("swipeOverlay");
 const swipeRayon = document.getElementById("swipeRayon");
+const swipeStock = document.getElementById("swipeStock");
 const swipeName = document.getElementById("swipeName");
 const swipeProgress = document.getElementById("swipeProgress");
 const qtyValue = document.getElementById("qtyValue");
@@ -724,7 +773,8 @@ startSessionBtn.onclick = () => {
     return;
   }
 
-  sessionProducts = [...products].sort(sortByRayonThenName);
+  // Tri par stockage, puis rayon, puis nom
+  sessionProducts = [...products].sort(sortByStockageThenRayonThenName);
   sessionIndex = 0;
   currentList = [];
   updateSwipeCard();
@@ -745,6 +795,7 @@ function updateSwipeCard() {
 
   const p = sessionProducts[sessionIndex];
   swipeRayon.textContent = (rayonIcons[p.rayon] || "") + " " + p.rayon;
+  swipeStock.textContent = p.stockage;
   swipeName.textContent = p.name;
 
   currentQty = p.defaultQty || 1;
@@ -770,7 +821,12 @@ btnQtyPlus.onclick = () => {
 
 btnAdd.onclick = () => {
   const p = sessionProducts[sessionIndex];
-  currentList.push({ name: p.name, rayon: p.rayon, qty: currentQty });
+  currentList.push({
+    name: p.name,
+    rayon: p.rayon,
+    stockage: p.stockage,
+    qty: currentQty
+  });
   sessionIndex++;
   updateSwipeCard();
 };
@@ -829,7 +885,7 @@ function renderResultList() {
   for (const it of arr) {
     if (it.rayon !== cur) {
       cur = it.rayon;
-      const h = `<div class=\"rayon-title\">${rayonIcons[cur] || ''} ${cur}<\/div>`;
+      const h = `<div class="rayon-title">${rayonIcons[cur] || ''} ${cur}</div>`;
       resultListEl.innerHTML += h;
       printListContainer.innerHTML += h;
     }
